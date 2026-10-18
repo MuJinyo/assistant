@@ -1,0 +1,17 @@
+{
+  "name": "knowledge-assistant",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter @knowledge/server --filter @knowledge/web --filter @knowledge/admin dev",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.20.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

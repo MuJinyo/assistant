@@ -1,0 +1,8 @@
+packages:
+  - web
+  - server
+  - admin
+  - packages/*
+
+allowBuilds:
+  esbuild: true
