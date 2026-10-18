@@ -127,7 +127,11 @@ packages/shared/     前后端共享类型
 
 为重要逻辑、少量界面交互和 API 增加适量 Vitest 测试；用 Docker 启动项目及所需依赖。
 
-**完成标志：**项目可以按说明重复启动，关键行为有测试覆盖。
+**状态：测试和 Docker 配置已补齐。**增加 Hono API 与 SQLite 反馈流程测试，覆盖健康检查、会话创建和校验、反馈保存、后台读取与删除；Docker Compose 在一个容器中运行 API、用户页面和后台页面，并将 SQLite 数据保存在项目的 `data` 目录。启动方法见 [Docker 本地开发](docs/docker.md)。
+
+**检查结果：**`pnpm test`、`pnpm typecheck`、`pnpm lint` 通过。当前开发环境没有安装 Docker，未能实际构建和启动容器。
+
+**完成标志：**关键 API 与数据操作有测试覆盖；项目有可重复使用的 Docker 开发配置。
 
 ### 11. 整理展示版本
 

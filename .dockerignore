@@ -1,0 +1,18 @@
+# Git 历史不需要复制进构建上下文。
+.git
+# 本地密钥不写入镜像；Compose 会从根目录 .env 读取变量。
+.env
+.env.*
+# 示例环境变量文件可以保留在镜像构建上下文中。
+!.env.example
+# 使用容器内安装的依赖，忽略宿主机（macOS）依赖。
+node_modules
+**/node_modules
+# SQLite 数据由 Compose 卷挂载，不打包到镜像。
+data
+# 忽略构建产物和 Vite 缓存。
+**/dist
+**/.vite
+# 忽略包管理器调试日志。
+npm-debug.log*
+pnpm-debug.log*
