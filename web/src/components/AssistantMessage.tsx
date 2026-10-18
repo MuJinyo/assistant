@@ -34,30 +34,33 @@ export function AssistantMessage({ messageId, reply }: AssistantMessageProps) {
   return (
     <article className="assistant-card">
       <p>{reply}</p>
-      <div className="message-actions">
-        <button aria-label="复制回复" onClick={copyReply} type="button">
-          <Icon name="copy" />
-          <span className="action-feedback">{copied ? "已复制" : ""}</span>
-        </button>
-        <button
-          aria-label="赞同回复"
-          aria-pressed={rating === "up"}
-          className={rating === "up" ? "selected" : ""}
-          onClick={() => rateReply("up")}
-          type="button"
-        >
-          <Icon name="thumb" />
-        </button>
-        <button
-          aria-label="不赞同回复"
-          aria-pressed={rating === "down"}
-          className={rating === "down" ? "selected" : ""}
-          onClick={() => rateReply("down")}
-          type="button"
-        >
-          <Icon name="thumb" down />
-        </button>
-      </div>
+      {/* 消息还没完整写入数据库时没有 messageId，因此先不显示需要保存的操作。 */}
+      {messageId && (
+        <div className="message-actions">
+          <button aria-label="复制回复" onClick={copyReply} type="button">
+            <Icon name="copy" />
+            <span className="action-feedback">{copied ? "已复制" : ""}</span>
+          </button>
+          <button
+            aria-label="赞同回复"
+            aria-pressed={rating === "up"}
+            className={rating === "up" ? "selected" : ""}
+            onClick={() => rateReply("up")}
+            type="button"
+          >
+            <Icon name="thumb" />
+          </button>
+          <button
+            aria-label="不赞同回复"
+            aria-pressed={rating === "down"}
+            className={rating === "down" ? "selected" : ""}
+            onClick={() => rateReply("down")}
+            type="button"
+          >
+            <Icon name="thumb" down />
+          </button>
+        </div>
+      )}
     </article>
   );
 }

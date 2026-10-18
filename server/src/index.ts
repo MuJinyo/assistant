@@ -1,7 +1,8 @@
 // serve 用来启动 Node.js HTTP 服务，并把 Hono 应用接到网络上。
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import type { FeedbackValue, HealthResponse, MessageRole } from "@knowledge/shared";
+import { streamSSE } from "hono/streaming";
+import type { FeedbackValue, HealthResponse } from "@knowledge/shared";
 import {
   addMessage,
   createConversation,
@@ -12,7 +13,7 @@ import {
   removeFeedback,
   saveFeedback,
 } from "./db.js";
-import { askQwen } from "./qwen.js";
+import { streamQwen } from "./qwen.js";
 
 const app = new Hono();
 // 给运维做健康检查的，或者监控系统
@@ -20,7 +21,7 @@ app.get("/api/health", (c) => c.json({ status: "ok" } satisfies HealthResponse))
 
 app.post("/api/conversations", (c) => c.json({ id: createConversation() }, 201));
 
-app.post("/api/conversations/:id/chat", async (c) => {
+app.post("/api/conversations/:id/stream", async (c) => {
   const conversationId = c.req.param("id");
   if (!hasConversation(conversationId)) return c.json({ error: "会话不存在" }, 404);
 
@@ -31,27 +32,35 @@ app.post("/api/conversations/:id/chat", async (c) => {
   // 问题先入库，即使模型调用失败，后台也能看到用户发过什么。
   addMessage(conversationId, "user", question);
 
-  try {
-    const answer = await askQwen(getConversationMessages(conversationId));
-    const messageId = addMessage(conversationId, "assistant", answer);
-    return c.json({ answer, messageId });
-  } catch (error) {
-    console.error(error);
-    return c.json({ error: "千问调用失败，请检查 .env 配置和百炼服务状态。" }, 502);
-  }
-});
+  return streamSSE(c, async (stream) => {
+    // 浏览器断开时也取消上游模型请求，避免继续生成无用内容。
+    const controller = new AbortController();
+    stream.onAbort(() => controller.abort());
 
-app.post("/api/conversations/:id/messages", async (c) => {
-  const conversationId = c.req.param("id");
-  if (!hasConversation(conversationId)) return c.json({ error: "会话不存在" }, 404);
+    let answer = "";
+    try {
+      const history = getConversationMessages(conversationId);
+      for await (const text of streamQwen(history, controller.signal)) {
+        if (stream.aborted) return;
+        answer += text;
+        // 每个 token 单独发给浏览器，页面可以边接收边显示。
+        await stream.writeSSE({ event: "token", data: JSON.stringify({ text }) });
+      }
 
-  const body = await c.req.json<{ role?: MessageRole; content?: string }>();
-  if ((body.role !== "user" && body.role !== "assistant") || !body.content?.trim()) {
-    return c.json({ error: "role 和 content 为必填项" }, 400);
-  }
+      if (!answer) throw new Error("千问没有返回文本内容。");
 
-  const id = addMessage(conversationId, body.role, body.content.trim());
-  return c.json({ id }, 201);
+      // 只在完整回复生成后保存 assistant 消息，并把消息 ID 发给前端以启用赞踩。
+      const messageId = addMessage(conversationId, "assistant", answer);
+      await stream.writeSSE({ event: "done", data: JSON.stringify({ messageId }) });
+    } catch (error) {
+      if (stream.aborted) return;
+      console.error(error);
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({ message: "千问调用失败，请检查 .env 配置和百炼服务状态。" }),
+      });
+    }
+  });
 });
 
 app.put("/api/messages/:id/feedback", async (c) => {

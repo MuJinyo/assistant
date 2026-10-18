@@ -39,8 +39,13 @@ export function ChatPage({
 
       <section className="conversation" aria-label="对话内容">
         {question && <p className="user-question">{question}</p>}
-        {assistantMessageId && reply && (
-          <AssistantMessage key={assistantMessageId} messageId={assistantMessageId} reply={reply} />
+        {/* 流式期间先展示文本；服务端发来完成事件后才会显示复制和反馈按钮。 */}
+        {reply && (
+          <AssistantMessage
+            key={assistantMessageId || "streaming"}
+            messageId={assistantMessageId}
+            reply={reply}
+          />
         )}
       </section>
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { askQuestion, createConversation } from "./api";
+import { createConversation, streamQuestion } from "./api";
 import { ChatPage } from "./components/ChatPage";
 import { WelcomePage } from "./components/WelcomePage";
 
@@ -17,26 +17,26 @@ export function App() {
       const conversation = await createConversation();
       setConversationId(conversation.id);
       setInitialQuestion(question);
+      setAssistantMessageId("");
+      setReply("");
+      // 先切到聊天页，让后续到达的每段文本都能立即渲染出来。
+      setPage("chat");
 
       if (question) {
-        const response = await askQuestion(conversation.id, question);
+        const response = await streamQuestion(conversation.id, question, setReply);
         setAssistantMessageId(response.messageId);
-        setReply(response.answer);
-      } else {
-        setAssistantMessageId("");
-        setReply("");
       }
-
-      setPage("chat");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "暂时无法开始对话。");
     }
   }
 
   async function sendMessage(question: string) {
-    const response = await askQuestion(conversationId, question);
+    // 新一轮回复开始前清空上一条，避免把两轮回答拼在一起。
+    setAssistantMessageId("");
+    setReply("");
+    const response = await streamQuestion(conversationId, question, setReply);
     setAssistantMessageId(response.messageId);
-    setReply(response.answer);
   }
 
   function goBack() {
