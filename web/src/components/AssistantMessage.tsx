@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { removeFeedback, saveFeedback } from "../api";
+import { useAssistantSpeech } from "../speech/useAssistantSpeech";
 import { Icon } from "./Icon";
 
 interface AssistantMessageProps {
   messageId: string;
   reply: string;
+  isStreaming: boolean;
 }
 
-export function AssistantMessage({ messageId, reply }: AssistantMessageProps) {
+export function AssistantMessage({ messageId, reply, isStreaming }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const speech = useAssistantSpeech(reply, isStreaming);
 
   async function copyReply() {
     // 使用浏览器剪贴板 API 复制完整回复，并短暂显示操作结果。
@@ -35,35 +38,60 @@ export function AssistantMessage({ messageId, reply }: AssistantMessageProps) {
     setRating(value);
   }
 
+  const speechLabel = isStreaming
+    ? speech.autoEnabled
+      ? "关闭自动语音播报"
+      : "开启自动语音播报"
+    : speech.status === "idle"
+      ? "重播语音"
+      : "停止语音播报";
+
   return (
     <article className="assistant-card">
       <p>{reply}</p>
-      {/* 消息还没完整写入数据库时没有 messageId，因此先不显示需要保存的操作。 */}
-      {messageId && (
-        <div className="message-actions">
-          <button aria-label="复制回复" onClick={copyReply} type="button">
-            <Icon name="copy" />
-            <span className="action-feedback">{copied ? "已复制" : ""}</span>
-          </button>
-          <button
-            aria-label="赞同回复"
-            aria-pressed={rating === "up"}
-            className={rating === "up" ? "selected" : ""}
-            onClick={() => rateReply("up")}
-            type="button"
-          >
-            <Icon name="thumb" />
-          </button>
-          <button
-            aria-label="不赞同回复"
-            aria-pressed={rating === "down"}
-            className={rating === "down" ? "selected" : ""}
-            onClick={() => rateReply("down")}
-            type="button"
-          >
-            <Icon name="thumb" down />
-          </button>
-        </div>
+      <div className="message-actions">
+        <button
+          aria-label={speechLabel}
+          aria-pressed={isStreaming ? speech.autoEnabled : speech.status === "playing"}
+          className={(isStreaming && speech.autoEnabled) || speech.status === "playing" ? "selected" : ""}
+          onClick={speech.toggle}
+          title={speechLabel}
+          type="button"
+        >
+          <Icon name="volume" />
+        </button>
+        {/* 复制和反馈需要消息写入数据库后返回 messageId。 */}
+        {messageId && (
+          <>
+            <button aria-label="复制回复" onClick={copyReply} type="button">
+              <Icon name="copy" />
+              <span className="action-feedback">{copied ? "已复制" : ""}</span>
+            </button>
+            <button
+              aria-label="赞同回复"
+              aria-pressed={rating === "up"}
+              className={rating === "up" ? "selected" : ""}
+              onClick={() => rateReply("up")}
+              type="button"
+            >
+              <Icon name="thumb" />
+            </button>
+            <button
+              aria-label="不赞同回复"
+              aria-pressed={rating === "down"}
+              className={rating === "down" ? "selected" : ""}
+              onClick={() => rateReply("down")}
+              type="button"
+            >
+              <Icon name="thumb" down />
+            </button>
+          </>
+        )}
+      </div>
+      {speech.error && (
+        <p className="speech-error" role="alert">
+          {speech.error}
+        </p>
       )}
     </article>
   );

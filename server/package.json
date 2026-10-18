@@ -9,10 +9,12 @@
   "dependencies": {
     "@hono/node-server": "^1.19.2",
     "@knowledge/shared": "workspace:*",
-    "hono": "^4.9.8"
+    "hono": "^4.9.8",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.20.5",
     "typescript": "^5.9.3"
   }

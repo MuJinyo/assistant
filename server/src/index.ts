@@ -2,6 +2,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { WebSocketServer } from "ws";
 import type { FeedbackValue, HealthResponse } from "@knowledge/shared";
 import {
   addMessage,
@@ -15,6 +16,7 @@ import {
 } from "./db.js";
 import { streamAgent } from "./agent.js";
 import { createTencentAsrUrl } from "./tencent-asr.js";
+import { connectVolcengineTts } from "./volcengine-tts.js";
 
 const app = new Hono();
 // 给运维做健康检查的，或者监控系统
@@ -97,6 +99,19 @@ app.get("/api/admin/conversations", (c) => c.json(listConversations()));
 
 const port = Number(process.env.PORT ?? 3000);
 
-serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
+const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
   console.log(`API server listening on http://localhost:${info.port}`);
+});
+
+// 浏览器通过本项目的 WebSocket 收发文本和音频，服务端代持火山引擎凭证。
+const speechSockets = new WebSocketServer({ noServer: true });
+speechSockets.on("connection", connectVolcengineTts);
+server.on("upgrade", (request, socket, head) => {
+  if (request.url !== "/api/speech/stream") {
+    socket.destroy();
+    return;
+  }
+  speechSockets.handleUpgrade(request, socket, head, (client) => {
+    speechSockets.emit("connection", client, request);
+  });
 });

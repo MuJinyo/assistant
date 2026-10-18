@@ -8,6 +8,7 @@ export function App() {
   const [initialQuestion, setInitialQuestion] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [assistantMessageId, setAssistantMessageId] = useState("");
+  const [isReplyStreaming, setIsReplyStreaming] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [reply, setReply] = useState("");
 
@@ -23,8 +24,13 @@ export function App() {
       setPage("chat");
 
       if (question) {
-        const response = await streamQuestion(conversation.id, question, setReply);
-        setAssistantMessageId(response.messageId);
+        setIsReplyStreaming(true);
+        try {
+          const response = await streamQuestion(conversation.id, question, setReply);
+          setAssistantMessageId(response.messageId);
+        } finally {
+          setIsReplyStreaming(false);
+        }
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "暂时无法开始对话。");
@@ -35,8 +41,13 @@ export function App() {
     // 新一轮回复开始前清空上一条，避免把两轮回答拼在一起。
     setAssistantMessageId("");
     setReply("");
-    const response = await streamQuestion(conversationId, question, setReply);
-    setAssistantMessageId(response.messageId);
+    setIsReplyStreaming(true);
+    try {
+      const response = await streamQuestion(conversationId, question, setReply);
+      setAssistantMessageId(response.messageId);
+    } finally {
+      setIsReplyStreaming(false);
+    }
   }
 
   function goBack() {
@@ -59,6 +70,7 @@ export function App() {
       ) : (
         <ChatPage
           assistantMessageId={assistantMessageId}
+          isReplyStreaming={isReplyStreaming}
           initialQuestion={initialQuestion}
           onBack={goBack}
           onSend={sendMessage}

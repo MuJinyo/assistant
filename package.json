@@ -2,7 +2,7 @@
   "name": "knowledge-assistant",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel --filter @knowledge/server --filter @knowledge/web --filter @knowledge/admin dev",
+    "dev": "node scripts/dev.mjs",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "typecheck": "pnpm --recursive --if-present typecheck",

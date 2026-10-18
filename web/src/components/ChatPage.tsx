@@ -5,6 +5,7 @@ import { Icon } from "./Icon";
 
 interface ChatPageProps {
   assistantMessageId: string;
+  isReplyStreaming: boolean;
   initialQuestion: string;
   onBack: () => void;
   onSend: (question: string) => Promise<void>;
@@ -13,6 +14,7 @@ interface ChatPageProps {
 
 export function ChatPage({
   assistantMessageId,
+  isReplyStreaming,
   initialQuestion,
   onBack,
   onSend,
@@ -42,9 +44,9 @@ export function ChatPage({
         {/* 流式期间先展示文本；服务端发来完成事件后才会显示复制和反馈按钮。 */}
         {reply && (
           <AssistantMessage
-            key={assistantMessageId || "streaming"}
             messageId={assistantMessageId}
             reply={reply}
+            isStreaming={isReplyStreaming}
           />
         )}
       </section>
