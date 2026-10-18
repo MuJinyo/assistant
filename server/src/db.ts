@@ -21,7 +21,7 @@ mkdirSync(dirname(databasePath), { recursive: true });
 
 const database = new DatabaseSync(databasePath);
 
-// SQLite 默认不检查外键，这里打开后，消息和反馈就不能指向不存在的记录。  exex执行
+// SQLite 默认不检查外键，这里打开后，消息和反馈就不能指向不存在的记录。
 database.exec("PRAGMA foreign_keys = ON");
 
 // IF NOT EXISTS 让服务每次启动都能安全地确认表结构已经准备好。

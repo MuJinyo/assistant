@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"; // 使用 effect 同步回�
 type SpeechStatus = "idle" | "loading" | "playing";
 
 /** 通过项目 WebSocket 发送回复文字，并用 MediaSource 播放返回的 MP3 音频流。 */
-export function useAssistantSpeech(reply: string, isStreaming: boolean) {
+export function useAssistantSpeech(reply: string, isStreaming: boolean, stopSignal: number) {
   const [status, setStatus] = useState<SpeechStatus>("idle"); // 记录当前状态，供界面显示语音按钮状态。
   const [autoEnabled, setAutoEnabled] = useState(true); // 记录是否允许回答生成时自动播报。
   const [error, setError] = useState(""); // 保存 WebSocket 或音频播放错误供界面展示。
@@ -20,9 +20,20 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
   const autoEnabledRef = useRef(true); // 在异步回调中同步读取自动播报开关的最新值。
   const isStreamingRef = useRef(isStreaming); // 在点击回调中读取回复是否仍在生成。
   const isFinishedRef = useRef(false); // 标记服务端是否已经发完本轮音频。
+  const previousStopSignalRef = useRef(stopSignal); // 记录停止按钮上次的点击次数。
   isStreamingRef.current = isStreaming; // 每次渲染都更新 ref，避免回调读到旧的生成状态。
 
   useEffect(() => {
+    if (previousStopSignalRef.current !== stopSignal) {
+      previousStopSignalRef.current = stopSignal;
+      autoEnabledRef.current = false;
+      setAutoEnabled(false);
+      previousLengthRef.current = reply.length;
+      sentLengthRef.current = 0;
+      stop();
+      return;
+    }
+
     const newText = reply.slice(previousLengthRef.current); // 只取本次新增的回复文字，逐段交给 TTS。
     previousLengthRef.current = reply.length; // 更新已观察的回复长度，供下一次 effect 使用。
 
@@ -36,7 +47,7 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
       openSocket(); // 确保结束事件可以发送到当前语音连接。
       send({ type: "finish" }); // 回复生成完成后通知 TTS 不会再有新文本。
     }
-  }, [reply, isStreaming]);
+  }, [reply, isStreaming, stopSignal]);
 
   // 组件卸载时关闭连接并清理音频资源。
   useEffect(() => () => stop(), []);
@@ -77,10 +88,12 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
 
     // WebSocket 建立成功后，发送连接阶段暂存的消息。
     socket.onopen = () => {
+      if (socketRef.current !== socket) return;
       for (const message of outgoingQueueRef.current.splice(0)) socket.send(message); // 按顺序清空发送队列并写入当前连接。
     };
     // 根据二进制音频帧或 JSON 状态消息执行不同处理。
     socket.onmessage = (message) => {
+      if (socketRef.current !== socket) return;
       if (message.data instanceof ArrayBuffer) {
         audioQueueRef.current.push(message.data); // 将新到达的音频片段排入播放队列。
         appendNextAudio(); // 如果缓冲区当前空闲，立即追加这段音频。
@@ -99,7 +112,9 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
         appendNextAudio(); // 若队列已空，结束 MediaSource 的输入流。
       }
     };
-    socket.onerror = () => setError("语音 WebSocket 连接失败。"); // WebSocket 发生连接错误时向界面提供提示。
+    socket.onerror = () => {
+      if (socketRef.current === socket) setError("语音 WebSocket 连接失败。"); // WebSocket 发生连接错误时向界面提供提示。
+    };
     socket.onclose = () => {
       if (socketRef.current === socket) socketRef.current = null; // 只清除当前连接的引用，避免旧连接覆盖新连接。
     };
@@ -107,7 +122,9 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
       if (isFinishedRef.current) stop(); // 全部音频播放完毕后清理本轮资源。
       else setStatus("idle"); // 服务端尚未结束时暂时恢复空闲提示，等待后续音频。
     };
-    audio.onerror = () => setError("音频播放失败，请重试。"); // 音频元素无法播放时提示用户。
+    audio.onerror = () => {
+      if (audioRef.current === audio) setError("音频播放失败，请重试。"); // 音频元素无法播放时提示用户。
+    };
   }
 
   // 将服务端收到的文字或结束事件写入 WebSocket，连接建立前先排队。
@@ -137,7 +154,11 @@ export function useAssistantSpeech(reply: string, isStreaming: boolean) {
     const socket = socketRef.current; // 暂存当前连接，后续清理引用后仍可调用 close。
     socketRef.current = null; // 先清空引用，避免关闭回调误认为仍是活动连接。
     socket?.close(); // 连接存在时关闭浏览器到服务端的 WebSocket。
-    audioRef.current?.pause(); // 停止当前音频播放。
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause(); // 停止当前音频播放。
+    }
     audioRef.current = null; // 释放音频元素引用。
     sourceBufferRef.current = null; // 释放音频缓冲区引用。
     mediaSourceRef.current = null; // 释放媒体源引用。

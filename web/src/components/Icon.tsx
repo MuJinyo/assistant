@@ -1,4 +1,13 @@
-type IconName = "arrow" | "chevron" | "copy" | "refresh" | "thumb" | "volume";
+type IconName =
+  | "arrow"
+  | "chevron"
+  | "copy"
+  | "keyboard"
+  | "microphone"
+  | "refresh"
+  | "stop"
+  | "thumb"
+  | "volume";
 
 interface IconProps {
   name: IconName;
@@ -45,6 +54,32 @@ export function Icon({ name, down = false }: IconProps) {
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 9v6h4l5 4V5L8 9H4Z" />
         <path d="M16 9a5 5 0 0 1 0 6M18.5 6.5a9 9 0 0 1 0 11" />
+      </svg>
+    );
+  }
+
+  if (name === "keyboard") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+        <path d="M6 9h.01M9 9h.01M12 9h.01M15 9h.01M18 9h.01M6 12h.01M9 12h.01M12 12h.01M15 12h.01M18 12h.01M8 15h8" />
+      </svg>
+    );
+  }
+
+  if (name === "microphone") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="9" y="3" width="6" height="12" rx="3" />
+        <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />
+      </svg>
+    );
+  }
+
+  if (name === "stop") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="5" y="5" width="14" height="14" rx="2" />
       </svg>
     );
   }

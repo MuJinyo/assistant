@@ -137,4 +137,8 @@ packages/shared/     前后端共享类型
 
 整理项目说明、运行配置和核心流程，确认作品便于演示和讲解。
 
+**状态：已完成。**新增根目录 README，整理项目功能、运行方式、环境变量、目录结构和常用命令；修正数据库文件中的遗留注释。核心展示流程与 TTS 细节分别见 README 和 `docs/tts-flow.md`。
+
+**检查结果：**`pnpm lint`、`pnpm typecheck`、`pnpm test` 通过；Docker Compose 配置可解析。
+
 **完成标志：**具备可展示的完整使用流程和项目说明。

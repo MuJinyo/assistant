@@ -11,8 +11,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function createConversation() {
-  return request<{ id: string }>("/api/conversations", { method: "POST" });
+export function createConversation(signal?: AbortSignal) {
+  return request<{ id: string }>("/api/conversations", { method: "POST", signal });
 }
 
 interface SseFrame {
@@ -22,7 +22,6 @@ interface SseFrame {
 
 function parseSseFrame(frame: string): SseFrame {
   const lines = frame.split("\n");
-  console.log("lines",lines,frame)
   return {
     event:
       lines
@@ -41,11 +40,13 @@ export async function streamQuestion(
   conversationId: string,
   question: string,
   onToken: (answer: string) => void,
+  signal?: AbortSignal,
 ) {
   const response = await fetch(`/api/conversations/${conversationId}/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({ question }),
+    signal,
   });
 
   if (!response.ok) {
@@ -53,7 +54,7 @@ export async function streamQuestion(
     throw new Error(error.error ?? `接口请求失败：${response.status}`);
   }
   if (!response.body) throw new Error("浏览器没有收到 SSE 数据流。");
- 
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -63,7 +64,6 @@ export async function streamQuestion(
   // 一个 HTTP 数据块不一定对应一个完整事件，因此缓存内容并按空行切出 SSE 帧。
   function handleFrame(frame: string) {
     const { event, data } = parseSseFrame(frame);
-    console.log('parseSseFrame',data )
     if (!data) return;
 
     // token 事件只带新增片段，前端在这里累加成当前完整文本。
@@ -88,14 +88,11 @@ export async function streamQuestion(
   // 持续读取服务端推送的 token，拼成完整回复并实时通知 React 更新页面。
   while (true) {
     const { value, done } = await reader.read();
-    console.log("value---",value)
     buffer += decoder.decode(value, { stream: !done });
     buffer = buffer.replace(/\r\n/g, "\n");
-    console.log("buffer===1",buffer)
     let frameEnd = buffer.indexOf("\n\n");
     while (frameEnd !== -1) {
       handleFrame(buffer.slice(0, frameEnd));
-      console.log("buffer===2",buffer)
       buffer = buffer.slice(frameEnd + 2);
       frameEnd = buffer.indexOf("\n\n");
     }
@@ -105,7 +102,6 @@ export async function streamQuestion(
 
   if (buffer.trim()) handleFrame(buffer);
   if (!messageId) throw new Error("SSE 数据流提前结束，没有收到完成事件。");
-  console.log("answer===0",answer)
   return { answer, messageId };
 }
 

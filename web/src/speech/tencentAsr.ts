@@ -23,18 +23,28 @@ export interface TencentAsrSession {
 
 /**
  * 连接腾讯云实时识别并开始采集麦克风音频。
- * 识别过程会持续通过 onText 通知调用方，返回的会话对象用于结束或取消识别。
+ * 返回的会话对象用于结束或取消识别；音量回调只用于驱动录音动画。
  */
-export async function startTencentAsr(onText: (text: string) => void): Promise<TencentAsrSession> {
+export async function startTencentAsr(
+  onVolume: (volume: number) => void,
+  signal?: AbortSignal,
+): Promise<TencentAsrSession> {
+  if (signal?.aborted) throw new DOMException("语音识别已取消。", "AbortError");
+
   // 浏览器必须支持麦克风访问；localhost 和 HTTPS 页面才允许调用该接口。
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("当前浏览器无法访问麦克风，请使用 HTTPS 或 localhost。");
   }
 
   // 先向自己的服务端获取签名地址，避免把腾讯云 SecretKey 放到浏览器。
-  const { url } = await fetchTencentUrl();
+  const { url } = await fetchTencentUrl(signal);
+  if (signal?.aborted) throw new DOMException("语音识别已取消。", "AbortError");
   // 浏览器会弹出麦克风授权提示；用户拒绝时这里会抛出浏览器错误。
   const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+  if (signal?.aborted) {
+    media.getTracks().forEach((track) => track.stop());
+    throw new DOMException("语音识别已取消。", "AbortError");
+  }
   const socket = new WebSocket(url);
   // 按句子序号保存结果，收到同一句的新识别内容时会覆盖旧内容。
   const sentenceByIndex = new Map<number, string>();
@@ -54,6 +64,7 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
   let resolveFinal: ((text: string) => void) | undefined;
   let rejectFinal: ((error: Error) => void) | undefined;
   let rejectHandshake: ((error: Error) => void) | undefined;
+  let abortHandshake: (() => void) | undefined;
 
   /** 断开音频节点、关闭音频上下文，并停止浏览器麦克风轨道。 */
   function stopMicrophone() {
@@ -90,8 +101,6 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
     isReady = true;
     if (message.result) {
       sentenceByIndex.set(message.result.index, message.result.voice_text_str);
-      // 通知页面刷新“正在识别”的预览内容。
-      onText(currentText());
     }
 
     if (message.final === 1) {
@@ -104,13 +113,24 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
     // 腾讯云先通过 WebSocket 返回握手结果；握手成功前不能发送音频。
     await new Promise<void>((resolve, reject) => {
       rejectHandshake = reject;
+      abortHandshake = () => {
+        const error = new DOMException("语音识别已取消。", "AbortError");
+        sessionError = error;
+        stopMicrophone();
+        socket.close();
+        reject(error);
+      };
+      signal?.addEventListener("abort", abortHandshake, { once: true });
+      if (signal?.aborted) abortHandshake();
       // 收到成功的握手消息后结束等待，下面才创建并启动音频采集节点。
       socket.onmessage = (event) => {
+        if (signal?.aborted) return;
         handleMessage(event);
         if (isReady) resolve();
       };
       // WebSocket 错误时同时结束握手等待和可能正在等待的识别结果。
       socket.onerror = () => {
+        if (signal?.aborted) return;
         const error = new Error("无法连接腾讯云语音识别，请检查网络和云服务配置。");
         sessionError = error;
         reject(error);
@@ -118,6 +138,7 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
       };
       // 如果腾讯云在最终结果到达前断开连接，提示本次识别失败。
       socket.onclose = () => {
+        if (signal?.aborted) return;
         if (!isReady || !hasFinalResult) {
           const error = new Error("腾讯云语音识别连接已关闭。");
           sessionError = error;
@@ -126,6 +147,7 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
         }
       };
     });
+    if (abortHandshake) signal?.removeEventListener("abort", abortHandshake);
 
     audioContext = new AudioContext();
     source = audioContext.createMediaStreamSource(media);
@@ -139,6 +161,9 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
       if (isStopped || socket.readyState !== WebSocket.OPEN) return;
 
       const input = event.inputBuffer.getChannelData(0);
+      let squareSum = 0;
+      for (const sample of input) squareSum += sample * sample;
+      onVolume(Math.min(1, Math.sqrt(squareSum / input.length) * 4));
       // 把浏览器当前采样率降到腾讯云需要的 16kHz，再转换成有符号 16 位整数。
       const ratio = audioContext!.sampleRate / 16000;
       for (let index = 0; index < input.length; index += ratio) {
@@ -157,6 +182,7 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
     processor.connect(mutedOutput);
     mutedOutput.connect(audioContext.destination);
   } catch (error) {
+    if (abortHandshake) signal?.removeEventListener("abort", abortHandshake);
     stopMicrophone();
     socket.close();
     throw error;
@@ -164,10 +190,10 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
 
   /** 取消本次识别，释放麦克风并关闭 WebSocket，不提交识别文字。 */
   function cancel() {
-    if (isStopped) return;
     isStopped = true;
     stopMicrophone();
     socket.close();
+    rejectFinal?.(new DOMException("语音识别已取消。", "AbortError"));
   }
 
   return {
@@ -197,8 +223,8 @@ export async function startTencentAsr(onText: (text: string) => void): Promise<T
 }
 
 /** 从项目服务端获取腾讯云签名后的 WebSocket 地址。 */
-async function fetchTencentUrl() {
-  const response = await fetch("/api/speech/tencent-url");
+async function fetchTencentUrl(signal?: AbortSignal) {
+  const response = await fetch("/api/speech/tencent-url", { signal });
   const result = (await response.json()) as { url?: string; error?: string };
   if (!response.ok || !result.url) throw new Error(result.error ?? "无法获取语音识别连接地址。");
   return { url: result.url };

@@ -1,14 +1,17 @@
-# 使用体积较小的 Node.js 24 基础镜像。
+# 直接从官方 pnpm 镜像取得对应平台的预编译程序，避免安装时再次下载 pnpm 二进制。
+FROM ghcr.io/pnpm/pnpm:12.3.4 AS pnpm
+
+# 使用体积较小的 Node.js 24 基础镜像运行项目。
 FROM node:24-bookworm-slim
 
 # 容器内项目的工作目录。
 WORKDIR /app
 
-# 固定 pnpm 版本，保证容器与项目使用相同的包管理器版本。
-# COREPACK_NPM_REGISTRY 和 NPM_REGISTRY 可在构建时覆盖，用于选择 npm 镜像；默认使用官方源。
-ARG COREPACK_NPM_REGISTRY
+# 使用上一步固定版本的 pnpm 原生程序；官方 pnpm 镜像同时支持 linux/amd64 和 linux/arm64。
+COPY --from=pnpm /opt/pnpm/pnpm /usr/local/bin/pnpm
+
+# NPM_REGISTRY 可在构建时覆盖，用于选择 npm 镜像；默认使用官方源。
 ARG NPM_REGISTRY=https://registry.npmjs.org
-RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 
 # 先复制依赖清单。源码变化时，Docker 可以复用这一层的依赖安装缓存。
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
