@@ -1,0 +1,68 @@
+name: Docker Compose CI
+
+on:
+  push:
+  pull_request:
+
+# CI 只需要读取仓库内容，不需要写回 GitHub。
+permissions:
+  contents: read
+
+jobs:
+  start-services:
+    name: Build and start services
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 用和本地相同的 Compose 配置构建并启动 API、用户端和管理后台。
+      # CI 不注入真实 API 密钥，健康检查不依赖外部模型服务。
+      - name: Build and start Docker services
+        run: docker compose up --build -d
+
+      # 等待 API 健康检查以及两个 Vite 页面都能通过 HTTP 响应。
+      - name: Check services are ready
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/health | grep -q '"status":"ok"'; then
+              break
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "API did not become healthy in time"
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          for url in http://localhost:5173 http://localhost:5174; do
+            ready=0
+
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent "$url" >/dev/null; then
+                ready=1
+                break
+              fi
+
+              sleep 2
+            done
+
+            if [ "$ready" -ne 1 ]; then
+              echo "Service did not become ready: $url"
+              exit 1
+            fi
+          done
+
+      # 出错时保留容器日志，方便在 GitHub Actions 页面排查。
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=100
+
+      # 每次 CI 结束都清理容器和网络，不删除数据卷。
+      - name: Stop Docker services
+        if: always()
+        run: docker compose down --remove-orphans
