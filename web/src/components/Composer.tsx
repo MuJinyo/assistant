@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
+import { startTencentAsr, type TencentAsrSession } from "../speech/tencentAsr";
 import { Icon } from "./Icon";
 
 interface ComposerProps {
@@ -9,6 +10,14 @@ export function Composer({ onSend }: ComposerProps) {
   const [inputMode, setInputMode] = useState<"voice" | "text">("voice");
   const [draft, setDraft] = useState("");
   const [isHolding, setIsHolding] = useState(false);
+  const [speechText, setSpeechText] = useState("");
+  const [speechError, setSpeechError] = useState("");
+  const holdingRef = useRef(false);
+  const cancelledRef = useRef(false);
+  const pointerStartYRef = useRef(0);
+  const speechSessionRef = useRef<TencentAsrSession | null>(null);
+
+  useEffect(() => () => speechSessionRef.current?.cancel(), []);
 
   async function sendDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -18,24 +27,91 @@ export function Composer({ onSend }: ComposerProps) {
     setDraft("");
   }
 
+  async function finishRecording(session: TencentAsrSession) {
+    if (speechSessionRef.current !== session) return;
+    speechSessionRef.current = null;
+
+    try {
+      const question = (await session.stop()).trim();
+      setSpeechText("");
+      if (question) await onSend(question);
+    } catch (error) {
+      setSpeechError(error instanceof Error ? error.message : "语音识别失败，请重试。");
+    }
+  }
+
+  async function startRecording() {
+    if (holdingRef.current) return;
+    holdingRef.current = true;
+    cancelledRef.current = false;
+    setIsHolding(true);
+    setSpeechError("");
+    setSpeechText("");
+
+    try {
+      const session = await startTencentAsr(setSpeechText);
+      speechSessionRef.current = session;
+      if (cancelledRef.current) {
+        session.cancel();
+        speechSessionRef.current = null;
+        return;
+      }
+      // 如果用户在麦克风权限弹窗期间已经松手，连接成功后马上结束录音。
+      if (!holdingRef.current) await finishRecording(session);
+    } catch (error) {
+      holdingRef.current = false;
+      setIsHolding(false);
+      setSpeechError(error instanceof Error ? error.message : "无法启动语音识别。");
+    }
+  }
+
   function stopHolding(event: PointerEvent<HTMLButtonElement>) {
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    holdingRef.current = false;
     setIsHolding(false);
+    if (speechSessionRef.current) void finishRecording(speechSessionRef.current);
+  }
+
+  function cancelHolding() {
+    holdingRef.current = false;
+    cancelledRef.current = true;
+    setIsHolding(false);
+    speechSessionRef.current?.cancel();
+    speechSessionRef.current = null;
+    setSpeechText("");
   }
 
   return (
     <div className="composer-area">
-      <p className="hold-hint">{isHolding ? "松手发送，上移取消" : "按住说话，松开结束"}</p>
+      <p className="hold-hint" aria-live="polite">
+        {speechError ||
+          (speechText
+            ? `正在识别：${speechText}`
+            : isHolding
+              ? "松手发送，上移取消"
+              : "按住说话，松开结束")}
+      </p>
 
       {inputMode === "voice" ? (
         <button
           className={`voice-button${isHolding ? " is-holding" : ""}`}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
-            setIsHolding(true);
+            pointerStartYRef.current = event.clientY;
+            void startRecording();
+          }}
+          onPointerMove={(event) => {
+            if (holdingRef.current && pointerStartYRef.current - event.clientY > 60) {
+              cancelHolding();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }
           }}
           onPointerUp={stopHolding}
-          onPointerCancel={() => setIsHolding(false)}
+          onPointerCancel={cancelHolding}
           type="button"
         >
           <span className="sr-only">按住说话</span>
@@ -72,6 +148,10 @@ export function Composer({ onSend }: ComposerProps) {
         className="mode-switch"
         onClick={() => {
           setIsHolding(false);
+          holdingRef.current = false;
+          cancelledRef.current = true;
+          speechSessionRef.current?.cancel();
+          speechSessionRef.current = null;
           setInputMode(inputMode === "voice" ? "text" : "voice");
         }}
         type="button"

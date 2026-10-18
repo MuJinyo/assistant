@@ -111,6 +111,8 @@ packages/shared/     前后端共享类型
 
 实现按住说话和文字输入切换，通过 WebSocket 接腾讯云语音识别。
 
+**状态：接入代码已完成，需填写腾讯云语音识别配置后体验。**服务端使用 SecretKey 为短时有效的 WebSocket 地址签名；浏览器采集麦克风并发送 16kHz PCM，松开后提交识别出的文字。按住时上移可以取消。配置项已补充到 `.env.example`：`TENCENT_ASR_APP_ID`、`TENCENT_ASR_SECRET_ID`、`TENCENT_ASR_SECRET_KEY`。
+
 **完成标志：**语音能转换成问题并提交，文字输入也可使用。
 
 ### 9. 接入语音播报

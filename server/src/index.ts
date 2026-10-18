@@ -14,10 +14,22 @@ import {
   saveFeedback,
 } from "./db.js";
 import { streamAgent } from "./agent.js";
+import { createTencentAsrUrl } from "./tencent-asr.js";
 
 const app = new Hono();
 // 给运维做健康检查的，或者监控系统
 app.get("/api/health", (c) => c.json({ status: "ok" } satisfies HealthResponse));
+
+app.get("/api/speech/tencent-url", (c) => {
+  try {
+    return c.json(createTencentAsrUrl());
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "腾讯云语音识别未配置。" },
+      503,
+    );
+  }
+});
 
 app.post("/api/conversations", (c) => c.json({ id: createConversation() }, 201));
 
