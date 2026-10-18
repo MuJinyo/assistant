@@ -3,15 +3,28 @@ import { AssistantMessage } from "./AssistantMessage";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 
-const sampleReply = "告诉我你想了解什么，我会结合实际情况，一步一步为你解答。";
-
 interface ChatPageProps {
+  assistantMessageId: string;
   initialQuestion: string;
   onBack: () => void;
+  onSend: (question: string) => Promise<string>;
+  reply: string;
 }
 
-export function ChatPage({ initialQuestion, onBack }: ChatPageProps) {
+export function ChatPage({
+  assistantMessageId,
+  initialQuestion,
+  onBack,
+  onSend,
+  reply,
+}: ChatPageProps) {
   const [question, setQuestion] = useState(initialQuestion);
+  const [messageId, setMessageId] = useState(assistantMessageId);
+
+  async function sendMessage(nextQuestion: string) {
+    setQuestion(nextQuestion);
+    setMessageId(await onSend(nextQuestion));
+  }
 
   return (
     <>
@@ -21,10 +34,10 @@ export function ChatPage({ initialQuestion, onBack }: ChatPageProps) {
 
       <section className="conversation" aria-label="对话内容">
         {question && <p className="user-question">{question}</p>}
-        <AssistantMessage reply={sampleReply} />
+        <AssistantMessage key={messageId} messageId={messageId} reply={reply} />
       </section>
 
-      <Composer onSend={setQuestion} />
+      <Composer onSend={sendMessage} />
       <p className="disclaimer">内容由 AI 生成，仅供参考</p>
     </>
   );

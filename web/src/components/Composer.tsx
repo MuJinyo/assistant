@@ -2,7 +2,7 @@ import { useState, type FormEvent, type PointerEvent } from "react";
 import { Icon } from "./Icon";
 
 interface ComposerProps {
-  onSend: (message: string) => void;
+  onSend: (message: string) => Promise<void>;
 }
 
 export function Composer({ onSend }: ComposerProps) {
@@ -10,11 +10,11 @@ export function Composer({ onSend }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [isHolding, setIsHolding] = useState(false);
 
-  function sendDraft(event: FormEvent<HTMLFormElement>) {
+  async function sendDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.trim()) return;
 
-    onSend(draft.trim());
+    await onSend(draft.trim());
     setDraft("");
   }
 

@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { removeFeedback, saveFeedback } from "../api";
 import { Icon } from "./Icon";
 
 interface AssistantMessageProps {
+  messageId: string;
   reply: string;
 }
 
-export function AssistantMessage({ reply }: AssistantMessageProps) {
+export function AssistantMessage({ messageId, reply }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false);
   const [rating, setRating] = useState<"up" | "down" | null>(null);
 
@@ -13,6 +15,20 @@ export function AssistantMessage({ reply }: AssistantMessageProps) {
     await navigator.clipboard.writeText(reply);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1400);
+  }
+
+  async function rateReply(value: "up" | "down") {
+    if (rating === value) {
+      await removeFeedback(messageId);
+      setRating(null);
+      return;
+    }
+
+    const reason = value === "down" ? window.prompt("请告诉我们不满意的原因") : "";
+    if (value === "down" && (!reason || !reason.trim())) return;
+
+    await saveFeedback(messageId, value, reason?.trim() ?? "");
+    setRating(value);
   }
 
   return (
@@ -27,7 +43,7 @@ export function AssistantMessage({ reply }: AssistantMessageProps) {
           aria-label="赞同回复"
           aria-pressed={rating === "up"}
           className={rating === "up" ? "selected" : ""}
-          onClick={() => setRating(rating === "up" ? null : "up")}
+          onClick={() => rateReply("up")}
           type="button"
         >
           <Icon name="thumb" />
@@ -36,7 +52,7 @@ export function AssistantMessage({ reply }: AssistantMessageProps) {
           aria-label="不赞同回复"
           aria-pressed={rating === "down"}
           className={rating === "down" ? "selected" : ""}
-          onClick={() => setRating(rating === "down" ? null : "down")}
+          onClick={() => rateReply("down")}
           type="button"
         >
           <Icon name="thumb" down />
