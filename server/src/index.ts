@@ -13,7 +13,7 @@ import {
   removeFeedback,
   saveFeedback,
 } from "./db.js";
-import { streamQwen } from "./qwen.js";
+import { streamAgent } from "./agent.js";
 
 const app = new Hono();
 // 给运维做健康检查的，或者监控系统
@@ -40,7 +40,7 @@ app.post("/api/conversations/:id/stream", async (c) => {
     let answer = "";
     try {
       const history = getConversationMessages(conversationId);
-      for await (const text of streamQwen(history, controller.signal)) {
+      for await (const text of streamAgent(history, conversationId, controller.signal)) {
         if (stream.aborted) return;
         answer += text;
         // 每个 token 单独发给浏览器，页面可以边接收边显示。
