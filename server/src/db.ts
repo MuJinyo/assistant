@@ -70,6 +70,13 @@ export function addMessage(conversationId: string, role: MessageRole, content: s
   return id;
 }
 
+export function getConversationMessages(conversationId: string) {
+  // 让千问收到当前会话的历史消息，才能理解用户的追问。
+  return database
+    .prepare("SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY rowid ASC")
+    .all(conversationId) as { role: MessageRole; content: string }[];
+}
+
 export function hasConversation(id: string) {
   return database.prepare("SELECT 1 FROM conversations WHERE id = ?").get(id) !== undefined;
 }

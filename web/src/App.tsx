@@ -1,32 +1,42 @@
 import { useState } from "react";
-import { addMessage, createConversation } from "./api";
+import { askQuestion, createConversation } from "./api";
 import { ChatPage } from "./components/ChatPage";
 import { WelcomePage } from "./components/WelcomePage";
-
-const sampleReply = "告诉我你想了解什么，我会结合实际情况，一步一步为你解答。";
 
 export function App() {
   const [page, setPage] = useState<"welcome" | "chat">("welcome");
   const [initialQuestion, setInitialQuestion] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [assistantMessageId, setAssistantMessageId] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [reply, setReply] = useState("");
 
   async function startChat(question = "") {
-    const conversation = await createConversation();
-    if (question) await addMessage(conversation.id, "user", question);
-    const assistant = await addMessage(conversation.id, "assistant", sampleReply);
+    setErrorMessage("");
+    try {
+      const conversation = await createConversation();
+      setConversationId(conversation.id);
+      setInitialQuestion(question);
 
-    setConversationId(conversation.id);
-    setAssistantMessageId(assistant.id);
-    setInitialQuestion(question);
-    setPage("chat");
+      if (question) {
+        const response = await askQuestion(conversation.id, question);
+        setAssistantMessageId(response.messageId);
+        setReply(response.answer);
+      } else {
+        setAssistantMessageId("");
+        setReply("");
+      }
+
+      setPage("chat");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "暂时无法开始对话。");
+    }
   }
 
   async function sendMessage(question: string) {
-    await addMessage(conversationId, "user", question);
-    const assistant = await addMessage(conversationId, "assistant", sampleReply);
-    setAssistantMessageId(assistant.id);
-    return assistant.id;
+    const response = await askQuestion(conversationId, question);
+    setAssistantMessageId(response.messageId);
+    setReply(response.answer);
   }
 
   function goBack() {
@@ -38,6 +48,11 @@ export function App() {
     <main className="assistant-screen">
       <div className="portrait-background" aria-hidden="true" />
       <div className="background-fade" aria-hidden="true" />
+      {errorMessage && (
+        <p className="request-error" role="alert">
+          {errorMessage}
+        </p>
+      )}
 
       {page === "welcome" ? (
         <WelcomePage onStartChat={startChat} />
@@ -47,7 +62,7 @@ export function App() {
           initialQuestion={initialQuestion}
           onBack={goBack}
           onSend={sendMessage}
-          reply={sampleReply}
+          reply={reply}
         />
       )}
     </main>

@@ -7,7 +7,7 @@ interface ChatPageProps {
   assistantMessageId: string;
   initialQuestion: string;
   onBack: () => void;
-  onSend: (question: string) => Promise<string>;
+  onSend: (question: string) => Promise<void>;
   reply: string;
 }
 
@@ -19,11 +19,16 @@ export function ChatPage({
   reply,
 }: ChatPageProps) {
   const [question, setQuestion] = useState(initialQuestion);
-  const [messageId, setMessageId] = useState(assistantMessageId);
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function sendMessage(nextQuestion: string) {
     setQuestion(nextQuestion);
-    setMessageId(await onSend(nextQuestion));
+    setErrorMessage("");
+    try {
+      await onSend(nextQuestion);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "暂时无法发送问题。");
+    }
   }
 
   return (
@@ -34,10 +39,17 @@ export function ChatPage({
 
       <section className="conversation" aria-label="对话内容">
         {question && <p className="user-question">{question}</p>}
-        <AssistantMessage key={messageId} messageId={messageId} reply={reply} />
+        {assistantMessageId && reply && (
+          <AssistantMessage key={assistantMessageId} messageId={assistantMessageId} reply={reply} />
+        )}
       </section>
 
       <Composer onSend={sendMessage} />
+      {errorMessage && (
+        <p className="request-error" role="alert">
+          {errorMessage}
+        </p>
+      )}
       <p className="disclaimer">内容由 AI 生成，仅供参考</p>
     </>
   );

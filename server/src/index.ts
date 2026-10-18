@@ -5,18 +5,41 @@ import type { FeedbackValue, HealthResponse, MessageRole } from "@knowledge/shar
 import {
   addMessage,
   createConversation,
+  getConversationMessages,
   hasConversation,
   hasMessage,
   listConversations,
   removeFeedback,
   saveFeedback,
 } from "./db.js";
+import { askQwen } from "./qwen.js";
 
 const app = new Hono();
 // 给运维做健康检查的，或者监控系统
 app.get("/api/health", (c) => c.json({ status: "ok" } satisfies HealthResponse));
 
 app.post("/api/conversations", (c) => c.json({ id: createConversation() }, 201));
+
+app.post("/api/conversations/:id/chat", async (c) => {
+  const conversationId = c.req.param("id");
+  if (!hasConversation(conversationId)) return c.json({ error: "会话不存在" }, 404);
+
+  const body = await c.req.json<{ question?: string }>();
+  const question = body.question?.trim();
+  if (!question) return c.json({ error: "question 为必填项" }, 400);
+
+  // 问题先入库，即使模型调用失败，后台也能看到用户发过什么。
+  addMessage(conversationId, "user", question);
+
+  try {
+    const answer = await askQwen(getConversationMessages(conversationId));
+    const messageId = addMessage(conversationId, "assistant", answer);
+    return c.json({ answer, messageId });
+  } catch (error) {
+    console.error(error);
+    return c.json({ error: "千问调用失败，请检查 .env 配置和百炼服务状态。" }, 502);
+  }
+});
 
 app.post("/api/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");

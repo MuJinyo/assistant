@@ -498,6 +498,21 @@ button {
   text-align: center;
 }
 
+.request-error {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  bottom: max(116px, calc(env(safe-area-inset-bottom) + 112px));
+  left: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 92%);
+  color: #9f3939;
+  font-size: 14px;
+  text-align: center;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
