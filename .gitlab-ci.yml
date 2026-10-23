@@ -16,7 +16,7 @@ quality:
     - if: '$CI_COMMIT_BRANCH'
   before_script:
     - corepack enable
-    - corepack prepare pnpm@12.3.4 --activate
+    - corepack prepare pnpm@12.15.0 --activate
     - pnpm install --frozen-lockfile
   script:
     - pnpm lint
