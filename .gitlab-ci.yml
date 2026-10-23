@@ -10,6 +10,8 @@ workflow:
 quality:
   stage: check
   image: node:24-alpine
+  variables:
+    COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
   timeout: 15m
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
