@@ -28,6 +28,8 @@ quality:
 docker-compose:
   stage: integration
   image: docker:27-cli
+  variables:
+    NPM_REGISTRY: "https://registry.npmmirror.com"
   services:
     - name: docker:27-dind
       alias: docker
@@ -42,7 +44,8 @@ docker-compose:
   before_script:
     - docker info
   script:
-    - docker compose up --build -d
+    - docker compose build --build-arg NPM_REGISTRY="$NPM_REGISTRY"
+    - docker compose up -d
     - |
       for attempt in $(seq 1 30); do
         if docker compose exec -T assistant node -e "fetch('http://localhost:3000/api/health').then((response) => response.json()).then((body) => process.exit(body.status === 'ok' ? 0 : 1)).catch(() => process.exit(1))"; then
