@@ -49,6 +49,10 @@ docker compose up --build
 
 页面和 API 使用与本地开发相同的地址。按 `Ctrl+C` 后运行 `docker compose down` 停止容器；聊天数据保存在本地 `data` 目录。详细说明见[Docker 本地开发](docs/docker.md)。当前 Docker 配置用于本地开发和演示。
 
+## 本地 GitLab
+
+仓库提供独立的 GitLab Docker Compose 配置。运行 `docker compose -f docker-compose.gitlab.yml up -d` 后，访问 <http://localhost:8929>。初始化密码获取方式和 Runner 配置见[本地 GitLab（Docker）](docs/gitlab-docker.md)。
+
 ## 项目结构
 
 ```text
