@@ -9,3 +9,6 @@ quality:
     - if: '$CI_COMMIT_BRANCH'
   before_script:  
     - echo '$CI_PIPELINE_SOURCE'
+  script:
+    - echo '$CI_PIPELINE_SOURCE'
+    - node -v
