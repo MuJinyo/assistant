@@ -1,14 +1,22 @@
 stages:
  - check
+ - build
 quality:
   stage: check
   variables: 
     COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
   rules:  
-    - if: '$CI_PIPELINE_SOURCE =="merge_request_event"'
+    # - if: '$CI_PIPELINE_SOURCE =="merge_request_event"'
     - if: "$CI_COMMIT_BRANCH"
   before_script:  
-    - echo "$CI_PIPELINE_SOURCE"
+    - corepack enable # 先写这两行，然后就能使用pnpm了
+    - corepack prepare pnpm@12.15.0 --activate # 安装并启用指定版本的 pnpm
+    - pnpm install --frozen-lockfile 
   script:
     - echo "$CI_PIPELINE_SOURCE"
     - node -v
+
+build-develop:
+ stage: build
+ script:
+  pnpm: build:web

@@ -19,9 +19,9 @@ quality: # 代码质量检查任务
    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"' # merge合并请求提交时运行
    # - if: '$CI_COMMIT_BRANCH' # 分支提交时运行
   before_script: # 正式检查前先执行这些命令,
-    - corepack enable # 启用 Corepack 管理包管理器
+    - corepack enable # 先写这两行，然后就能使用pnpm了
     - corepack prepare pnpm@12.15.0 --activate # 安装并启用指定版本的 pnpm
-    - pnpm install --frozen-lockfile # 按锁文件安装依赖，不修改锁文件,解决本地和ci依赖不一致的问题
+    - pnpm install --frozen-lockfile # 按锁文件安装依赖，不修改锁文件,解决本地和ci依赖不一致的问题 装node_modules
   script: # 执行脚本
     - pnpm lint # 检查代码风格和潜在问题
     - pnpm typecheck # 执行 TypeScript 类型检查

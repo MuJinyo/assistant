@@ -6,7 +6,8 @@
     "lint": "oxlint .",
     "format": "oxfmt .",
     "typecheck": "pnpm --recursive --if-present typecheck",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "build:web": " pnpm --filter @knowledge/web run build"
   },
   "devDependencies": {
     "oxfmt": "^0.73.0",
