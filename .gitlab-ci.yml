@@ -6,9 +6,9 @@ quality:
     COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
   rules:  
    # - if '$CI_PIPELINE_SOURCE =="merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH'
+    - if: "$CI_COMMIT_BRANCH"
   before_script:  
-    - echo '$CI_PIPELINE_SOURCE'
+    - echo "$CI_PIPELINE_SOURCE"
   script:
-    - echo '$CI_PIPELINE_SOURCE'
+    - echo "$CI_PIPELINE_SOURCE"
     - node -v
