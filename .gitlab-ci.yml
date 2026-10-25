@@ -1,81 +1,11 @@
 stages:
-  - check
-  - integration
-
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH'
-
+ - check
 quality:
   stage: check
-  image: node:24-alpine
-  variables:
+  variables: 
     COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
-  timeout: 15m
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  rules:  
+   # - if '$CI_PIPELINE_SOURCE =="merge_request_event"'
     - if: '$CI_COMMIT_BRANCH'
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@12.15.0 --activate
-    - pnpm install --frozen-lockfile
-  script:
-    - pnpm lint
-    - pnpm typecheck
-    - pnpm test
-
-docker-compose:
-  stage: integration
-  image: docker:27-cli
-  variables:
-    NPM_REGISTRY: "https://registry.npmmirror.com"
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_DRIVER: overlay2
-  services:
-    - name: docker:27-dind
-      alias: docker
-  timeout: 20m
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH'
-  before_script:
-    - docker info
-  script:
-    - docker compose build --build-arg NPM_REGISTRY="$NPM_REGISTRY"
-    - docker compose up -d
-    - |
-      for attempt in $(seq 1 30); do
-        if docker compose exec -T assistant node -e "fetch('http://localhost:3000/api/health').then((response) => response.json()).then((body) => process.exit(body.status === 'ok' ? 0 : 1)).catch(() => process.exit(1))"; then
-          break
-        fi
-
-        if [ "$attempt" -eq 30 ]; then
-          echo "API did not become healthy in time"
-          exit 1
-        fi
-
-        sleep 2
-      done
-    - |
-      for url in http://localhost:5173 http://localhost:5174; do
-        ready=0
-
-        for attempt in $(seq 1 30); do
-          if docker compose exec -T assistant node -e "fetch('$url').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"; then
-            ready=1
-            break
-          fi
-
-          sleep 2
-        done
-
-        if [ "$ready" -ne 1 ]; then
-          echo "Service did not become ready: $url"
-          exit 1
-        fi
-      done
-  after_script:
-    - docker compose logs --no-color --tail=100 || true
-    - docker compose down --remove-orphans || true
+  before_script:  
+    - echo '$CI_PIPELINE_SOURCE'

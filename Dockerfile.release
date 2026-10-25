@@ -1,0 +1,32 @@
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /app
+
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY}
+
+RUN corepack enable && corepack prepare pnpm@12.15.0 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json web/package.json
+COPY admin/package.json admin/package.json
+COPY server/package.json server/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN pnpm install --frozen-lockfile --registry=${NPM_REGISTRY}
+
+COPY . .
+RUN pnpm --filter @knowledge/web build && pnpm --filter @knowledge/admin build
+
+FROM node:24-bookworm-slim AS runtime
+
+WORKDIR /app/server
+COPY --from=build /app /app
+
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV WEB_DIST_DIR=/app/web/dist
+ENV ADMIN_DIST_DIR=/app/admin/dist
+
+EXPOSE 3000
+
+CMD ["node", "--import", "tsx", "src/index.ts"]

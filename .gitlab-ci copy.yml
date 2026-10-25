@@ -1,0 +1,124 @@
+# 只用一次，相当于租户，带着下面的家当，运行在runner环境里，然后运行完毕，就没了（收到东西，打扫卫生走人）
+# CI_PIPELINE_SOURCE这是所有公司都一样的
+# echo shell的打印输出  跟node -pe用法一致   echo $ZHIPUAI_API_KEY = node -pe "process.env.ZHIPUAI_API_KEY"
+stages: # 定义流水线的执行阶段
+  - check # 第一阶段：代码检查
+  - integration # 第二阶段：集成构建与运行检查
+  - deploy # 第三阶段：部署到 develop、staging 或 main 对应环境
+workflow: # 设置哪些提交可以创建流水线
+  rules: # 按规则决定是否创建流水线
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"' # 合并请求提交时创建流水线
+    - if: '$CI_COMMIT_BRANCH' # 分支提交时创建流水线
+quality: # 代码质量检查任务
+  stage: check # 将此任务放在 check 阶段
+  image: node:24-alpine # 使用 Node.js 24 Alpine 镜像运行任务.不写的话，就runner环境是什么，代码就运行在什么环境
+  variables: # 配置此任务使用的环境变量，这个是放在runner里面， 可以通过node中process.env.COREPACK_NPM_REGISTRY能拿到这个字段
+    COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com" # 指定 Corepack 下载 pnpm 时使用的镜像
+  timeout: 15m # 最多运行 15 分钟，租的时间
+  rules: # 设置此任务的触发条件 什么时候租（租的条件）
+   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"' # merge合并请求提交时运行
+   # - if: '$CI_COMMIT_BRANCH' # 分支提交时运行
+  before_script: # 正式检查前先执行这些命令,
+    - corepack enable # 启用 Corepack 管理包管理器
+    - corepack prepare pnpm@12.15.0 --activate # 安装并启用指定版本的 pnpm
+    - pnpm install --frozen-lockfile # 按锁文件安装依赖，不修改锁文件,解决本地和ci依赖不一致的问题
+  script: # 执行脚本
+    - pnpm lint # 检查代码风格和潜在问题
+    - pnpm typecheck # 执行 TypeScript 类型检查
+    - pnpm test # 运行项目测试
+docker-compose: # 临时构建并启动 Compose，验证集成状态后清理
+  stage: integration # 将此任务放在 integration 阶段
+  image: docker:27-cli # 使用 Docker 27 命令行镜像
+  variables: # 配置 Docker 和包下载所需的环境变量
+    NPM_REGISTRY: "https://registry.npmmirror.com" # 为 Dockerfile 中的依赖安装指定 npm 镜像
+    DOCKER_HOST: tcp://docker:2375 # 连接 Docker-in-Docker 服务
+    DOCKER_TLS_CERTDIR: "" # 关闭 DinD 自动 TLS 配置
+    DOCKER_DRIVER: overlay2 # 指定 Docker 存储驱动
+  services: # 启动此任务需要的后台服务
+    - name: docker:27-dind # 使用 Docker 27 DinD 服务提供 Docker 引擎
+      alias: docker # 将 DinD 服务主机名设为 docker
+  timeout: 20m # 最多运行 20 分钟
+  rules: # 设置此任务的触发条件
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"' # 合并请求提交时运行
+    - if: '$CI_COMMIT_BRANCH' # 分支提交时运行
+  before_script: # 正式构建前先执行这些命令
+    - docker info # 显示 Docker 客户端和服务端信息，确认连接正常
+  script: # 构建服务并检查服务是否就绪
+    - docker compose -f docker-compose.release.yml build --build-arg NPM_REGISTRY="$NPM_REGISTRY" # 构建生产镜像并把 npm 镜像地址传给 Dockerfile
+    - docker compose -f docker-compose.release.yml up -d # 在临时 DinD 环境启动生产镜像
+    - | # 使用循环等待 API 健康检查通过
+      for attempt in $(seq 1 30); do # 最多检查 30 次
+        if docker compose -f docker-compose.release.yml exec -T assistant node -e "fetch('http://localhost:3000/api/health').then((response) => response.json()).then((body) => process.exit(body.status === 'ok' ? 0 : 1)).catch(() => process.exit(1))"; then # 在容器内请求 API 健康检查接口
+          break # 健康检查通过后结束循环
+        fi # 结束本次健康检查判断
+        if [ "$attempt" -eq 30 ]; then # 如果已经是最后一次检查
+          echo "API did not become healthy in time" # 输出 API 未及时就绪的错误信息
+          exit 1 # 以失败状态结束任务
+        fi # 结束最后一次检查判断
+        sleep 2 # 等待 2 秒后再次检查
+      done # 结束 API 健康检查循环
+    - | # 使用循环等待两个前端服务都能正常响应
+      for url in http://localhost:3000/ http://localhost:3000/admin/; do # 依次检查用户页面和管理后台
+        ready=0 # 初始化当前服务的就绪标记
+        for attempt in $(seq 1 30); do # 每个服务最多检查 30 次
+          if docker compose -f docker-compose.release.yml exec -T assistant node -e "fetch('$url').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"; then # 在容器内请求当前页面地址
+            ready=1 # 标记当前服务已经就绪
+            break # 就绪后结束当前服务的检查循环
+          fi # 结束本次前端响应判断
+          sleep 2 # 等待 2 秒后再次检查
+        done # 结束当前服务的检查循环
+        if [ "$ready" -ne 1 ]; then # 如果循环结束时服务仍未就绪
+          echo "Service did not become ready: $url" # 输出未就绪的服务地址
+          exit 1 # 以失败状态结束任务
+        fi # 结束服务就绪判断
+      done # 结束两个前端服务的检查循环
+  after_script: # 集成检查结束后收集日志并清理临时容器
+    - docker compose -f docker-compose.release.yml logs --no-color --tail=100 || true # 输出生产镜像服务日志，便于排查问题
+    - docker compose -f docker-compose.release.yml down --remove-orphans || true # 停止并清理临时 Compose 容器
+.deploy-template: &deploy-template # 定义三个环境共用的远程 Docker Compose 部署步骤
+  stage: deploy # 将部署任务放在最后一个阶段
+  image: alpine:3.21 # 使用 Alpine 镜像运行 SSH 和 rsync 客户端
+  before_script: # 准备 SSH 凭证并检查部署变量
+    - apk add --no-cache openssh-client rsync # 安装 SSH 和文件同步工具
+    - ': "${DEPLOY_HOST:?请设置 CI/CD 变量 DEPLOY_HOST}"' # 检查远程服务器地址
+    - ': "${DEPLOY_USER:?请设置 CI/CD 变量 DEPLOY_USER}"' # 检查远程部署用户名
+    - ': "${DEPLOY_ROOT:?请设置 CI/CD 变量 DEPLOY_ROOT}"' # 检查远程代码目录
+    - ': "${DEPLOY_ENV_ROOT:?请设置 CI/CD 变量 DEPLOY_ENV_ROOT}"' # 检查远程环境变量文件目录
+    - ': "${SSH_PRIVATE_KEY:?请设置 SSH_PRIVATE_KEY 文件变量}"' # 检查 SSH 私钥文件变量
+    - ': "${SSH_KNOWN_HOSTS:?请设置 SSH_KNOWN_HOSTS 文件变量}"' # 检查服务器主机指纹文件变量
+    - mkdir -p "$HOME/.ssh" # 创建 SSH 配置目录
+    - install -m 600 "$SSH_PRIVATE_KEY" "$HOME/.ssh/id_ed25519" # 安全保存私钥文件
+    - install -m 600 "$SSH_KNOWN_HOSTS" "$HOME/.ssh/known_hosts" # 安装预先核验过的服务器指纹
+  script: # 同步源代码并在远程服务器上构建、启动服务
+    - REMOTE_DIR="${DEPLOY_ROOT%/}/${DEPLOY_ENVIRONMENT}" # 为当前环境计算独立的代码目录
+    - REMOTE_ENV_FILE="${DEPLOY_ENV_ROOT%/}/${DEPLOY_ENVIRONMENT}.env" # 为当前环境计算独立的密钥配置文件路径
+    - ssh -i "$HOME/.ssh/id_ed25519" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$REMOTE_DIR'" # 在服务器上准备环境目录
+    - rsync -az --delete --exclude=.git/ --exclude=node_modules/ --exclude=data/ --exclude=.env --exclude='.env.*' -e "ssh -i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts" "$CI_PROJECT_DIR/" "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_DIR/" # 同步代码并保留服务器上的数据库和密钥文件
+    - ssh -i "$HOME/.ssh/id_ed25519" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST" "cd '$REMOTE_DIR' && test -f '$REMOTE_ENV_FILE' && APP_HOST_PORT='$APP_HOST_PORT' docker compose --project-name '$DEPLOY_PROJECT_NAME' --env-file '$REMOTE_ENV_FILE' -f docker-compose.release.yml up -d --build --remove-orphans" # 使用隔离项目和环境密钥文件构建、启动当前环境
+  environment: # 在 GitLab 环境页记录部署状态
+    name: $DEPLOY_ENVIRONMENT # 按部署任务设置环境名称
+  resource_group: $DEPLOY_ENVIRONMENT # 同一环境一次只允许一个部署任务运行
+deploy-development: # develop 分支自动发布到开发环境
+  <<: *deploy-template # 复用统一的远程部署步骤
+  variables: # 设置开发环境独有的部署参数
+    DEPLOY_ENVIRONMENT: development # GitLab 环境名称
+    DEPLOY_PROJECT_NAME: zhushou-development # 独立的 Compose 项目名
+    APP_HOST_PORT: "13000" # 开发环境访问端口
+  rules: # 只在 develop 分支的分支流水线中发布
+    - if: '$CI_COMMIT_BRANCH == "develop"' # 推送 develop 分支时自动发布
+deploy-staging: # staging 分支自动发布到预发环境
+  <<: *deploy-template # 复用统一的远程部署步骤
+  variables: # 设置预发环境独有的部署参数
+    DEPLOY_ENVIRONMENT: staging # GitLab 环境名称
+    DEPLOY_PROJECT_NAME: zhushou-staging # 独立的 Compose 项目名
+    APP_HOST_PORT: "23000" # 预发环境访问端口
+  rules: # 只在 staging 分支的分支流水线中发布
+    - if: '$CI_COMMIT_BRANCH == "staging"' # 推送 staging 分支时自动发布
+deploy-production: # main 分支自动发布到线上环境
+  <<: *deploy-template # 复用统一的远程部署步骤
+  variables: # 设置线上环境独有的部署参数
+    DEPLOY_ENVIRONMENT: production # GitLab 环境名称
+    DEPLOY_PROJECT_NAME: zhushou-production # 独立的 Compose 项目名
+    APP_HOST_PORT: "3000" # 线上环境访问端口
+  rules: # 只在 main 分支的分支流水线中发布
+    - if: '$CI_COMMIT_BRANCH == "main"' # 推送 main 分支时自动发布

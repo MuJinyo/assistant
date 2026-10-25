@@ -53,6 +53,10 @@ docker compose up --build
 
 仓库提供独立的 GitLab Docker Compose 配置。运行 `docker compose -f docker-compose.gitlab.yml up -d` 后，访问 <http://localhost:8929>。初始化密码获取方式和 Runner 配置见[本地 GitLab（Docker）](docs/gitlab-docker.md)。
 
+## GitLab 分支部署
+
+CI 会在 `develop`、`staging` 和 `main` 分支通过检查后，分别部署到开发、预发和线上环境。远程服务器、SSH 变量、环境密钥文件和访问端口配置见[GitLab 分支部署](docs/gitlab-deploy.md)。
+
 ## 项目结构
 
 ```text
